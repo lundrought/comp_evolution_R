@@ -1,0 +1,255 @@
+---
+title: "Hardy-Weinberg demo"
+author: "Lun Suša"
+date: "2024-03-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(reshape2)
+```
+
+## **1. naloga:** \
+*Grafično prikaži odvisnost genotipskih frekvenc [f(AA), f(Aa), f(aa)] od frekvence alelov [f(A), f(a)]. V katerih genotipih se alel pretežno nahaja, ko je redek in ko je pogost?*
+```{r}
+odvisnost_frekvenc_df <- data.frame()
+
+vektor_frekvenc_A <- seq(0, 1, 0.1)
+for (p in vektor_frekvenc_A) {
+  q <- 1-p
+  fAA <- p^2
+  fAa <- p*q*2
+  faa <- q^2
+
+  odvisnost_frekvenc_df <- rbind(odvisnost_frekvenc_df, data.frame(frekvenca_A = p, frekvenca_a = q, frekvenca_AA = fAA, frekvenca_Aa = fAa, frekvenca_aa = faa))
+}
+
+print(odvisnost_frekvenc_df)
+
+```
+```{r}
+
+ggplot(odvisnost_frekvenc_df, aes(x = frekvenca_A)) +
+  geom_line(aes(y = frekvenca_AA, color = "frekvenca AA"), linewidth = 1.5) +
+  geom_line(aes(y = frekvenca_aa, color = "frekvenca aa"), linewidth = 1.5) +
+  geom_line(aes(y = frekvenca_Aa, color = "frekvenca Aa"), linewidth = 1.5) +
+  labs(x = "frekvenca alela A", y = "frekvence genotipov", color = "Legenda", title = "Odvisnost frekvence genotipov od frekvence alelov") +
+  theme_minimal()
+```
+\
+Ko je alel redek se pretežno nahaja v heterozigotih, ko je alel pogost se ga največ nahaja v homozigotih.
+
+## **2. naloga:** \
+*Izračunaj in grafično prikaži adaptacijske pokrajine za vsak obravnavan primer selekcije. Primerjaj adaptacijske pokrajine med seboj in za vsak primer pojasni, kakšna bosta povprečni populacijski fitnes in genetska pestrost populacije po mnogo generacijah delovanja selekcije.*
+
+```{r}
+s <- 0.01
+t <- 0.01
+selekcija_proti_dominantnemu <- c(1, 1-s, 1-s)
+selekcija_proti_recesivnemu <- c(1, 1, 1-s)
+selekcija_proti_kodominantemu <- c(1, 1-1/2*s, 1-s)
+stabilizirajoca_selekcija <- c(1-s, 1, 1-t)
+locujoca_selekcija <- c(1+s, 1, 1+t)
+p <- c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)
+
+```
+
+```{r}
+
+calculate_fitness <- function(selekcija_vector, p_values) {
+  fitness <- length(p_values)
+  
+  for (i in seq_along(p_values)) {
+    fitness[i] <- p_values[i]^2 * selekcija_vector[1] +
+                  2 * p_values[i] * (1 - p_values[i]) * selekcija_vector[2] +
+                  (1 - p_values[i])^2 * selekcija_vector[3]
+  }
+  
+  df <- data.frame(p = p_values, fitness = fitness, selekcija=deparse(substitute(selekcija_vector)))        
+
+  return(list(data=df, fitness=fitness))
+}
+
+result_proti_dominantnemu <- calculate_fitness(selekcija_proti_dominantnemu, p)
+result_proti_recesivnemu <- calculate_fitness(selekcija_proti_recesivnemu, p)
+result_proti_kodominantemu <- calculate_fitness(selekcija_proti_kodominantemu, p)
+result_stabilizirajoca <- calculate_fitness(stabilizirajoca_selekcija, p)
+result_locujoca <- calculate_fitness(locujoca_selekcija, p)
+
+vse_selekcije <- rbind(result_proti_dominantnemu$data, result_proti_recesivnemu$data, result_proti_kodominantemu$data,result_stabilizirajoca$data,result_locujoca$data)
+
+adaptacijske_pokrajine <- ggplot(vse_selekcije, aes(x = p, y = fitness, color = selekcija)) +
+                geom_line(linewidth=1.3) +
+                labs(title = "Adaptacijske pokrajine", x = "Alelna frekvenca (p)", y = "Povprečni pop. fitnes")+
+                theme_minimal()
+
+adaptacijske_pokrajine
+
+```
+\
+RS-selekcija proti recesivnemu alelu \
+DS-selekcija proti dominantemu alelu \
+KDS-selekcija proti kodominantnemu alelu \
+SS-stabilizirajoča selekcija \
+LS-ločujoča selekcija \
+
+### **Primerjava:** \
+V vseh primerih selekcije, razen pri SS in LS povprečen populacijski fitnes naraste do globalnega maksimuma- najvišjega možnega maksimuma, ki je enak fitnesu homozigotnega osebka za ugodni alel. Ugoden alel se v teh primerih selekcije favorizira in neugoden se sčasoma izgubi. To se ne zgodi enako hitro (v istem številu generacij).Najhitreje se to zgodi pri DS, zatem pri KDS in RS. Razlogi so navedeni spodaj. \
+Pri LS povprečen populacijski fitnes prav tako naraste do maksimuma, a ta ni nujno globalen. Torej populacijski fitnes lahko naraste do enake vrednosti, kot fitnes homozigotnega osebka z nižjim fitnesom od drugega homozigota. Pri SS pa povprečen populacijski fitnes nikoli ne naraste do maksimuma. Tega vedno "obtežujejo" homozigoti, katerih fitnes je nižji od maksimalnega.Homozigoti pa se v populaciji pojavljajo ves čas, saj teoretična populacija samih heterozigotov, z zelo veliko verjetnostjo producira homozigotne potomce. \
+V vseh primerih selekcije, razen v primeru SS, genetska pestrost populacije upade. To je posledica selekcije, ki favorizira ugodnejši alel, ki se čez čas v populaciji fiksira, neugoden pa se izgubi. Pri SS pa se zaradi ohranjanja najvišjega populacijskega fitnesa ohranja največ heterozigotov, ki nosijo enak delež ugodnih in neugodnih alelov. Genetska pestrost se tako ohranja.  \
+
+
+
+
+## **3. naloga:** 
+
+*V populaciji so fitnesi genotipov:* \
+*W(AA) = 1.03* \
+*W(Aa) = 1* \
+*W(aa) = 1.01*
+
+*Preseljevanje in mutiranje ne potekata. S simulacijo v eni ali več populacijah prikaži »skok prek doline v adaptacijski pokrajini« zaradi delovanja genetskega drifta. Kot rezultat pripni graf simulacije in nastavitve ter oboje obrazloži.* \
+
+
+```{r}
+generiraj_matriks_frekvenc <- function(zac_frekvenca_alela, st_populacij, st_generacij, N, fitnes) {
+  tabela_frekvenc <- matrix(nrow = st_populacij, ncol = st_generacij)
+  tabela_frekvenc[,1] <- zac_frekvenca_alela
+  
+  
+  for (i in 1:st_populacij) {
+    p_po_selekciji <- zac_frekvenca_alela
+  
+    for (j in 2:st_generacij) {
+      if ((p_po_selekciji != 0) & (p_po_selekciji != 1)) {
+      
+        a <- rbinom(n=1, size=2 * N, prob=p_po_selekciji)
+        p_pred_selekcijo <- a / (2 * N)
+        
+        skupni_fitnes <- fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*2*p_pred_selekcijo*(1-p_pred_selekcijo) +
+          fitnes[3]*(1-p_pred_selekcijo)^2
+        
+        p_po_selekciji <- (fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*p_pred_selekcijo*(1-p_pred_selekcijo))/skupni_fitnes
+        
+        tabela_frekvenc[i, j] <- p_po_selekciji
+      }
+      
+      else {
+        tabela_frekvenc[i,j:ncol(tabela_frekvenc)] <- p_po_selekciji
+        break
+      }
+    }
+  }
+  return(tabela_frekvenc)
+}
+
+
+generiraj_matriks_frekvenc_brez_drifta <- function(zac_frekvenca_alela, st_populacij, st_generacij, N, fitnes) {
+  tabela_frekvenc <- matrix(nrow = st_populacij, ncol = st_generacij)
+  tabela_frekvenc[,1] <- zac_frekvenca_alela
+  
+  
+  for (i in 1:st_populacij) {
+    p_po_selekciji <- zac_frekvenca_alela
+  
+    for (j in 2:st_generacij) {
+      if ((p_po_selekciji != 0) & (p_po_selekciji != 1)) {
+      
+         p_pred_selekcijo <- p_po_selekciji
+        
+        skupni_fitnes <- fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*2*p_pred_selekcijo*(1-p_pred_selekcijo) +
+          fitnes[3]*(1-p_pred_selekcijo)^2
+        
+        p_po_selekciji <- (fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*p_pred_selekcijo*(1-p_pred_selekcijo))/skupni_fitnes
+        
+        tabela_frekvenc[i, j] <- p_po_selekciji
+      }
+      
+      else {
+        tabela_frekvenc[i,j:ncol(tabela_frekvenc)] <- p_po_selekciji
+        break
+      }
+    }
+  }
+  return(tabela_frekvenc)
+}
+
+
+s <- 0.02
+w_locujoca <- c(1.03, 1, 1.01)
+zac_frekvence <- c(0.2, 0.3, 0.4)
+
+generiraj_graf <- function(N, generiraj_matriks_frekvenc) {
+  skupen_matriks_frekvenc <- lapply(zac_frekvence, function(zac_f) { generiraj_matriks_frekvenc(zac_f, 10, 500, N, w_locujoca)
+  })
+
+  skupna_tabela_frekvenc <- data.frame()
+
+  for (i in 1:length(skupen_matriks_frekvenc)) {
+    matriks <- skupen_matriks_frekvenc[[i]] 
+    dataframe <- as.data.frame(melt(matriks)) 
+    names(dataframe) <- c("Populacija", "Generacija", "Frekvenca_alela") 
+    dataframe$Populacija <- as.numeric(as.character(dataframe$Populacija))
+    dataframe$Generacija <- as.numeric(as.character(dataframe$Generacija))
+    dataframe$Zacetna_frekvenca <- rep(i, times = nrow(dataframe))
+    
+    skupna_tabela_frekvenc <- rbind(skupna_tabela_frekvenc, dataframe)
+  }
+
+  last_generation <- max(skupna_tabela_frekvenc$Generacija)
+  last_generation_data <- skupna_tabela_frekvenc[skupna_tabela_frekvenc$Generacija == last_generation, ]
+  fiksirani_aleli <- sum(last_generation_data$Frekvenca_alela == 1)
+  izgubljeni_aleli <- sum(last_generation_data$Frekvenca_alela == 0)
+
+  
+  
+  ggplot(data = skupna_tabela_frekvenc, aes(x = Generacija, y = Frekvenca_alela, group = interaction(Populacija, Zacetna_frekvenca), color = factor(Zacetna_frekvenca))) +
+    geom_line() +
+    annotate("text", x = max(skupna_tabela_frekvenc$Generacija), y = 1.1, label = paste("N: ", N), hjust = 1) +
+    scale_color_manual(values = rainbow(3), labels = c("0.2", "0.3", "0.4")) +
+    scale_x_continuous(expand = c(0.01, 0.01), breaks = seq(0, max(skupna_tabela_frekvenc$Generacija), by = max(skupna_tabela_frekvenc$Generacija)/10)) +
+    scale_y_continuous(expand = c(0.01, 0.01), breaks = seq(0, 1, by = 0.1)) +
+    labs(x = "Generacije", y = "Frekvenca alela", color = "Začetna frekvenca", title="Ločujoča selekcija") +
+    theme_minimal() +
+    theme(axis.line.x = element_line(linewidth = 0.5),
+          axis.line.y = element_line(linewidth = 0.5)) +
+    annotate("text", x = max(skupna_tabela_frekvenc$Generacija) * 0.85, y = 1, label = paste("Fiksirani: ", fiksirani_aleli)) +
+   annotate("text", x = max(skupna_tabela_frekvenc$Generacija) * 0.85, y = 0.1, label = paste("Izgubljeni: ", izgubljeni_aleli))
+}
+
+```
+
+
+```{r}
+result_locujoca <- data.frame(calculate_fitness(w_locujoca, p))
+adaptacijska_pokrajina <- ggplot(result_locujoca, aes(x = p, y = fitness)) +
+                geom_line(size=1.3) +
+                labs(title = "Adaptacijska pokrajina", x = "Alelna frekvenca (p)", y = "Povprečni pop. fitnes")+
+                theme_minimal()
+adaptacijska_pokrajina
+```
+
+V tem primeru, ko so si fitnesi homozigotov različni za kar 0.2 (s za 0.02 večji od t), je dolina adaptacijske pokrajine premaknjena v levo, k frekvenci alela p = 0.25. Ta se lahko preskoči, ko je drift dovolj velik. Učinek drifta pa se povečuje z zmanjševanjem velikosti populacije (N). V večjih populacijah (N = 10000) torej še ne bo preskoka - pri visoki frekvenci alela (npr. p = 0.4) bi se ta fiksiral pri vseh populacijah, pri nižji (p = 0.02) pa bi se večinoma izgubil. Pri N = 1000 ta nihanja že postanejo večja in pri N = 100 se aleli pri populacijah naključno fiksirajo in izgubijo skoraj ne glede na začetno frekvenco alela.
+
+```{r}
+generiraj_graf(10000, generiraj_matriks_frekvenc)
+generiraj_graf(1000, generiraj_matriks_frekvenc)
+generiraj_graf(100, generiraj_matriks_frekvenc)
+
+```
+
+\
+Če je učinek drifta izključen, je potek spreminjanja frekvence alela pri vseh treh velikostih populacije enak.
+```{r}
+generiraj_graf(10000, generiraj_matriks_frekvenc_brez_drifta)
+generiraj_graf(1000, generiraj_matriks_frekvenc_brez_drifta)
+generiraj_graf(100, generiraj_matriks_frekvenc_brez_drifta)
+
+```
+

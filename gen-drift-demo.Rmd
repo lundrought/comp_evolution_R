@@ -1,0 +1,255 @@
+---
+title: "Allele frequencies and genetic drift"
+author: "Lun Suša"
+date: "2024-02-24"
+output:
+  html_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+
+## 2. Fiksacija/izguba alela glede na velikost populacije
+
+```{r}
+init_p <- 0.5  
+reps <- 10   
+pop_velikost <- c(10, 50, 100, 500, 1000, 5000, 10000) 
+
+results <- data.frame(Replication = numeric(), Generation = numeric(), Allele_frequency = numeric())
+for (ponovitev in 1:2) {
+  for (N in pop_velikost) {
+    freq <- NULL  
+    gen <- N*3
+    for (i in 1:reps) {
+      p <- init_p
+      for (j in 1:(gen-1)) {
+        a <- rbinom(n = 1, size = 2*N, prob = p[j])  
+        f <- a / (2*N)                            
+        p[j + 1] <- f                                 
+      }
+      freq <- rbind(freq, p) 
+      
+    }
+    
+    freq_transposed <- t(freq)  
+    
+   
+    df <- data.frame(Replication = rep(1:reps, each = gen),
+                     Generation = rep(1:gen, times = reps),
+                     Allele_frequency = as.vector(freq_transposed))
+    df$N <- rep(N, nrow(df)) 
+    df$ponovitev <- rep(ponovitev, nrow(df))
+    results <- rbind(results, df)  
+  }
+}
+
+subset_fixed <- subset(results, Allele_frequency ==1.00 | Allele_frequency == 0.00)
+
+pol_gen <- subset_fixed %>%
+  group_by(N, ponovitev, Replication) %>%
+  summarize(prva_fiksirana_gen = min(Generation)) %>%
+  top_n(-5, prva_fiksirana_gen) %>%
+  summarize(pol_populacij_fiksiranih = max(prva_fiksirana_gen))
+
+prva_gen <- subset_fixed %>%
+  group_by(N, ponovitev) %>%
+  summarize(prva_fiksirana_gen = min(Generation))
+
+skupno <- left_join(prva_gen, pol_gen, by = c("N", "ponovitev"))
+skupno
+```
+
+```{r}
+ggplot(skupno, aes(x = N)) +
+  geom_point(aes(y = prva_fiksirana_gen, color = "prva populacija s fiksiranim alelom"), size=3) +  
+  geom_smooth(aes(y = prva_fiksirana_gen, color = "prva populacija s fiksiranim alelom"), method = "lm", se = FALSE) +  
+  geom_point(aes(y = pol_populacij_fiksiranih, color = "pol populacij s fiksiranim alelom"), size=3) +  
+  geom_smooth(aes(y = pol_populacij_fiksiranih, color = "pol populacij s fiksiranim alelom"), method = "lm", se = FALSE) + 
+  scale_x_log10() +  
+  scale_y_log10() +  
+  labs(x = "velikost populacije", y = "število generacij", title = "odvisnost fiksacije in izgube alela glede na velikost populacije", color = "Legenda") +  
+  scale_color_manual(values = c("blue", "red"), 
+                     labels = c("prva populacija s fiksiranim alelom", "fiksiran alel v polovici populacij"))
+```
+
+## 3. Odvisnost učinka genskega drifta od velikosti populacije in števila generacij
+
+```{r}
+init_p <- 0.5  
+gen_v <- c(50, 500, 1000)  
+reps <- 10   
+pop_velikost <- c(50, 500, 500)  
+
+results3 <- data.frame(Replication = numeric(), Generation = numeric(), Allele_frequency = numeric())
+for (ponovitev in 1:15) {
+  for (k in 1:length(pop_velikost)) {
+    N <- pop_velikost[k]
+    gen <- gen_v[k] 
+    freq <- NULL
+    
+    for (i in 1:reps) {
+      p <- init_p 
+      for (j in 1:(gen-1)) {
+        a <- rbinom(n = 1, size = 2*N, prob = p[j])  
+        f <- a / (2*N)                             
+        p[j + 1] <- f                               
+      
+      }
+    freq <- rbind(freq, p)
+    
+    }
+    freq_transposed <- t(freq)
+    df <- data.frame(Replication = rep(1:reps, each = gen),
+                     Allele_frequency = as.vector(freq_transposed))
+    df$N <- rep(N, nrow(df))
+    df$gen <- rep(gen, nrow(df))
+    df$ponovitev <- rep(ponovitev, nrow(df))
+    results3 <- rbind(results3, df)
+  }
+
+}
+
+replications_count <- results3 %>%
+  group_by(ponovitev, N, gen) %>%
+  filter(Allele_frequency ==1.00 | Allele_frequency == 0.00) %>%
+  summarize(replications = n_distinct(Replication)) %>%
+  pivot_wider(names_from = c(N, gen), values_from = replications) %>%
+  replace_na(list(`50_50` = 0, `500_500` = 0, `500_1000` = 0))
+
+column_means <- round(colMeans(replications_count[-1]), 2)
+column_means_df <- as.data.frame(t(column_means))
+colnames(column_means_df) <- colnames(replications_count)[-1]
+
+
+replications_count <- rbind(replications_count, column_means_df)
+replications_count <- replications_count %>%
+  mutate(ponovitev = if_else(is.na(ponovitev), "povprečja", as.character(ponovitev)))
+replications_count
+```
+
+## 4. Fiksacija/izguba alela glede na začetno frekvenco alela
+
+```{r}
+N <- 100  
+gen <- 500  
+reps <- 100  
+init_p_vektor <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)  
+
+results4 <- data.frame(Replication = numeric(), Generation = numeric(), Allele_frequency = numeric())
+
+for (init_p in init_p_vektor) { 
+  freq <- NULL
+
+  for (i in 1:reps) {
+    p <- init_p
+    for (j in 1:(gen-1)) {
+      a <- rbinom(n = 1, size = 2*N, prob = p[j]) 
+      f <- a / (2*N)                             
+      p[j + 1] <- f                                  
+    }
+    freq <- rbind(freq, p)  
+  }
+  
+  freq_transposed <- t(freq)
+  
+  df <- data.frame(Replication = rep(1:reps, each = gen),
+                   Generation = rep(1:gen, times = reps),
+                   Allele_frequency = as.vector(freq_transposed))
+  df$init_p <- rep(init_p, nrow(df))  
+  results4 <- rbind(results4, df) 
+}
+
+
+subset_fixed4 <- subset(results4, Allele_frequency ==1.000)
+
+subset_lost4 <- subset(results4, Allele_frequency ==0.000)
+
+prva_pop_fixed <- subset_fixed4 %>% 
+  group_by(init_p) %>% 
+  summarize(prva_fiksirana_gen = min(Generation))
+
+prva_pop_lost <- subset_lost4 %>% 
+  group_by(init_p) %>% 
+  summarize(prva_izgubljena_gen = min(Generation))
+
+skupno_odvisnost_od_f <- left_join(prva_pop_fixed, prva_pop_lost, by = "init_p")
+skupno_odvisnost_od_f
+```
+
+```{r}
+ggplot(skupno_odvisnost_od_f, aes(x = init_p)) +
+  geom_point(aes(y = prva_fiksirana_gen, color = "Fixed"), size = 3) +  
+  geom_smooth(aes(y = prva_fiksirana_gen, color = "Fixed"), 
+              method = "nls", 
+              formula = y ~ a * exp(b * x), 
+              method.args = list(start = c(a = 1, b = 1)), 
+              se = FALSE) +  
+  geom_point(aes(y = prva_izgubljena_gen, color = "Lost"), size = 3) +  
+  geom_smooth(aes(y = prva_izgubljena_gen, color = "Lost"), 
+              method = "nls", 
+              formula = y ~ a * exp(b * x), 
+              method.args = list(start = c(a = 1, b = 1)), 
+              se = FALSE) + 
+  labs(x = "začetna frekvenca alela A", y = "število generacij", 
+       title = "Število generacij do fiksacije oz. izgube alela v prvi populaciji", 
+       color = "Legenda") +  
+  scale_color_manual(values = c("blue", "red"), 
+                     labels = c("fiksacija", "izguba"))
+```
+
+## 5. Verjetnost fiksacije alela
+
+```{r}
+st_fiksiranih_in_izgubljenih <- function(zac_frekvenca_alela, st_generacij, st_populacij, N)
+{
+  frekvence_alela <- matrix(nrow = st_populacij, ncol = st_generacij)
+  
+  for(i in 1:st_populacij) {
+    p <- numeric(st_generacij)
+    p[1] <- zac_frekvenca_alela
+    
+    for(j in 2:st_generacij) {
+      a <- rbinom(n=1, size=2 * N, prob=p[j-1])
+      p[j] <- a / (2 * N)
+    }
+    frekvence_alela[i, ] <- p
+  }
+  
+  st_fiksiranih <- sum(frekvence_alela[,st_generacij] == 1)
+  st_izgubljenih <- sum(frekvence_alela[,st_generacij] == 0)
+  
+  return(round(c(zac_frekvenca_alela, st_fiksiranih / st_populacij, st_izgubljenih / st_populacij), 1))
+}
+
+# Koda za izdelavo tabele
+
+delez_fiksiranih_in_izgubljenih <- data.frame(
+  "Frekvenca alela" = numeric(),
+  "Delez fiksiranih" = numeric(),
+  "Delez izgubljenih" = numeric(),
+  stringsAsFactors = FALSE
+)
+
+st_generacij <- 1000
+st_populacij <- 1000
+N <- 100
+
+rezultati <- lapply(rep(seq(0.1, 0.9, by = 0.1), each=2),
+                  st_fiksiranih_in_izgubljenih, 
+                  st_generacij = st_generacij, 
+                  st_populacij = st_populacij, 
+                  N = N)
+
+delez_fiksiranih_in_izgubljenih <- do.call(rbind, rezultati)
+
+colnames(delez_fiksiranih_in_izgubljenih) <- c("Frekvenca alela", "Delez fiksiranih", "Delez izgubljenih")
+
+data.frame(delez_fiksiranih_in_izgubljenih)
+```

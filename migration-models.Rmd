@@ -1,0 +1,86 @@
+---
+title: "Migration models"
+author: "Lun Suša"
+date: "2024-05-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+model_otok_otok <- function(p1, p2, m) {
+  df <- data.frame(generacija = numeric(), 
+                   p1 = numeric(), q1 = numeric(),
+                   p2 = numeric(), q2 = numeric())
+  
+  for (generacija in 1:50) {
+    p1_naslednja <- (1-m)*p1 + m*p2
+    p2_naslednja <- (1-m)*p2 + m*p1
+    
+    p1 <- p1_naslednja
+    p2 <- p2_naslednja
+    
+    q1 <- 1 - p1
+    q2 <- 1 - p2
+    
+    df <- rbind(df, data.frame(generacija = generacija, 
+                               p1 = p1, 
+                               q1 = q1, 
+                               p2 = p2, 
+                               q2 = q2))
+  }
+  
+
+  graf <- ggplot() +
+    geom_line(data = df, aes(x = generacija, y = p1, color = "p1")) +
+    geom_line(data = df, aes(x = generacija, y = p2, color = "p2")) +
+    labs(x = "Generacija", y = "Frekvenca", title = "MODEL OTOK - OTOK", color = "Legenda")
+ 
+  print(graf)
+  return(df)
+}
+  
+model_otok_otok(0.8, 0.3, 0.15)
+  
+```
+
+```{r}
+model_celina_otok <- function(p1, p2, m) {
+  df <- data.frame(generacija = numeric(), 
+                   p1 = numeric(), q1 = numeric(),
+                   p2 = numeric(), q2 = numeric())
+  
+  for (generacija in 1:50) {
+    p2_naslednja <- (1-m)*p2 + m*p1
+    
+    p2 <- p2_naslednja
+    
+    q1 <- 1 - p1
+    q2 <- 1 - p2
+    
+    df <- rbind(df, data.frame(generacija = generacija, 
+                               p1 = p1, 
+                               q1 = q1, 
+                               p2 = p2, 
+                               q2 = q2))
+  }
+  
+
+  graf <- ggplot() +
+    geom_line(data = df, aes(x = generacija, y = p1, color = "p1")) +
+    geom_line(data = df, aes(x = generacija, y = p2, color = "p2")) +
+    labs(x = "Generacija", y = "Frekvenca", title = "MODEL CELINA - OTOK", color = "Legenda")
+ 
+  print(graf)
+  return(df)
+}
+  
+model_celina_otok(0.5, 0.8, 0.1)
+```
+

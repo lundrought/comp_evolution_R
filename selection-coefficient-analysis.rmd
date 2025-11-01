@@ -1,0 +1,239 @@
+---
+title: "Selection Coefficient Impact Analysis"
+author: "Lun Suša"
+date: "2024-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("reshape2")
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+```
+
+**1. vprašanje**: kako velikost selekcijskega koeficienta (s) vpliva na čas določene spremembe alela? (pri kateri generaciji se frekvenca alela spremeni za 0.45?)\
+
+najmanjša generacija, pri kateri ugoden dominanten alel doseže frekvenco 0.5, pri začetni frekvenci 0.05:
+
+```{r}
+prestej_generacije_do_razlike_f <- function(N, st_populacij, s_koeficient) {
+  fitnes <- c(1, 1, 1 - s_koeficient)
+  min_generacija <- Inf
+  
+  for (i in 1:st_populacij) {
+    p_po_selekciji <- 0.05
+    trenutna_gen <- 1
+  
+    while (p_po_selekciji < 0.5) {
+      
+        a <- rbinom(n=1, size=2 * N, prob=p_po_selekciji)
+        p_pred_selekcijo <- a / (2 * N)
+        
+        skupni_fitnes <- fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*2*p_pred_selekcijo*(1-p_pred_selekcijo) +
+          fitnes[3]*(1-p_pred_selekcijo)^2
+        
+        p_po_selekciji <- (fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*p_pred_selekcijo*(1-p_pred_selekcijo))/skupni_fitnes
+        
+        trenutna_gen = trenutna_gen + 1
+    }
+    
+    if (trenutna_gen < min_generacija) {
+      min_generacija <- trenutna_gen
+    }
+  }
+  return(min_generacija)
+}
+
+koeficient_s_vektor <- c(0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.001)
+
+vse_generacije <- sapply(koeficient_s_vektor, function(s) prestej_generacije_do_razlike_f(10000, 10, s))
+
+tabela_s_in_generacij <- data.frame(
+  "Selekcijski koeficient" = koeficient_s_vektor,
+  "Generacija" = vse_generacije)
+
+tabela_s_in_generacij
+```
+
+```{r}
+ggplot(tabela_s_in_generacij, aes(x = Selekcijski.koeficient, y = Generacija)) +
+  geom_point() +
+  geom_line() +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Selekcijski.koeficient", y = "Generacije", title = "Vpliv selekcijskega koeficienta na čas za spremembo frekvence alela") 
+
+```
+
+Osi na grafu sta logaritmirani.\
+
+Večji selekcijski koeficient pomeni večji selekcijski pritisk. Z naraščanjem velikosti selekcijskega koeficienta čas za določeno spremembo frekvence alela eksponentno pada.\
+
+**2. vprašanje**: Ali se bo ugodni alel fiksiral hitreje v primeru selekcije proti recesivnemu alelu, selekcije proti dominantnemu alelu ali v primeru aditivnega učinka alelov?
+
+a)  grafični prikaz - vsi trije primeri selekcije
+
+```{r}
+
+generiraj_matriks_frekvenc <- function(zac_frekvenca_alela, st_populacij, st_generacij, N, fitnes) {
+  tabela_frekvenc <- matrix(nrow = st_populacij, ncol = st_generacij)
+  tabela_frekvenc[,1] <- zac_frekvenca_alela
+  
+  
+  for (i in 1:st_populacij) {
+    p_po_selekciji <- zac_frekvenca_alela
+  
+    for (j in 2:st_generacij) {
+      if ((p_po_selekciji != 0) & (p_po_selekciji != 1)) {
+      
+        a <- rbinom(n=1, size=2 * N, prob=p_po_selekciji)
+        p_pred_selekcijo <- a / (2 * N)
+        
+        skupni_fitnes <- fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*2*p_pred_selekcijo*(1-p_pred_selekcijo) +
+          fitnes[3]*(1-p_pred_selekcijo)^2
+        
+        p_po_selekciji <- (fitnes[1]*p_pred_selekcijo^2 +
+          fitnes[2]*p_pred_selekcijo*(1-p_pred_selekcijo))/skupni_fitnes
+        
+        tabela_frekvenc[i, j] <- p_po_selekciji
+      }
+      
+      else {
+        tabela_frekvenc[i,j:ncol(tabela_frekvenc)] <- p_po_selekciji
+        break
+      }
+    }
+  }
+  return(tabela_frekvenc)
+}
+
+s <- 0.02
+w_proti_recesivnemu <- c(1, 1, 1-s)
+w_proti_dominantnemu <- c(1, 1-s, 1-s)
+w_kodominantni <- c(1, 1-1/2*s, 1-s)
+fitnes_vsi <- list(w_proti_recesivnemu, w_proti_dominantnemu, w_kodominantni)
+
+skupen_matriks_frekvenc <- lapply(fitnes_vsi, function(fitnes) { generiraj_matriks_frekvenc(0.3, 10, 5000, 10000, fitnes)
+})
+
+skupna_tabela_frekvenc <- data.frame()
+
+for (i in 1:length(skupen_matriks_frekvenc)) {
+  matriks <- skupen_matriks_frekvenc[[i]] 
+  dataframe <- as.data.frame(melt(matriks)) 
+  names(dataframe) <- c("Populacija", "Generacija", "Frekvenca_alela") 
+  dataframe$Populacija <- as.numeric(as.character(dataframe$Populacija))
+  dataframe$Generacija <- as.numeric(as.character(dataframe$Generacija))
+  dataframe$Selekcija <- rep(i, times = nrow(dataframe))
+  
+  skupna_tabela_frekvenc <- rbind(skupna_tabela_frekvenc, dataframe)
+}
+
+ggplot(data = skupna_tabela_frekvenc, aes(x = Generacija, y = Frekvenca_alela, group = interaction(Populacija, Selekcija), color = factor(Selekcija))) +
+  geom_line() +
+  scale_color_manual(values = rainbow(3), labels = c("proti recesivnemu", "proti dominantnemu", "aditiven učinek alelov")) +
+  scale_x_continuous(expand = c(0.01, 0.01), breaks = seq(0, max(skupna_tabela_frekvenc$Generacija), by = max(skupna_tabela_frekvenc$Generacija)/10)) +
+  scale_y_continuous(expand = c(0.01, 0.01), breaks = seq(0, 1, by = 0.1)) +
+  labs(x = "Generacije", y = "Frekvenca alela", color = "Selekcija", title="Spreminjanje frekvence alela glede na tip selekcije") +
+  theme_minimal() +
+  theme(axis.line.x = element_line(linewidth = 0.5),
+        axis.line.y = element_line(linewidth = 0.5)) +
+  coord_cartesian(xlim = c(0, 800))
+
+```
+
+```{r}
+povprecja <- skupna_tabela_frekvenc %>%
+  group_by(Generacija, Selekcija) %>%
+  summarise(Frekvenca_alela = mean(Frekvenca_alela))
+
+ggplot(data = povprecja, aes(x = Generacija, y = Frekvenca_alela, color = factor(Selekcija))) +
+  geom_line(size=1.5) +
+  scale_color_manual(values = rainbow(3), labels = c("proti recesivnemu", "proti dominantnemu", "aditiven učinek alelov")) +
+  scale_x_continuous(expand = c(0.01, 0.01), breaks = seq(0, max(povprecja$Generacija), by = max(povprecja$Generacija)/10)) +
+  scale_y_continuous(expand = c(0.01, 0.01), breaks = seq(0, 1, by = 0.1)) +
+  labs(x = "Generacije", y = "Frekvenca alela", color = "Selekcija", title="Povprečno spreminjanje frekvence alela glede na tip selekcije") +
+  theme_minimal() +
+  theme(axis.line.x = element_line(linewidth = 0.5),
+        axis.line.y = element_line(linewidth = 0.5)) +
+  coord_cartesian(xlim = c(0, 1000))
+```
+
+b)  podatki, razbrani iz simulacij - število generacij, potrebnih za fiksacijo ali alela glede na vrsto selekcije\
+    za vse 3 vrste selekcije:
+
+    -generacija, pri kateri se alel fiksira ali izgubi pri vsaki populaciji posebej\
+    -povprečna generacija, pri kateri se alel fiksira ali izgubi\
+
+```{r}
+min_gen_fiksirane <- skupna_tabela_frekvenc %>%
+  filter(Frekvenca_alela == 0 | Frekvenca_alela == 1) %>%
+  group_by(Selekcija, Populacija) %>%
+  summarise(Prva_generacija_fiksacije = min(Generacija))
+
+povprecne_gen_fiksirane <- min_gen_fiksirane %>%
+  group_by(Selekcija) %>%
+    mutate(Selekcija = case_when(
+    Selekcija == 1 ~ "proti recesivnemu",
+    Selekcija == 2 ~ "proti dominantnemu",
+    Selekcija == 3 ~ "aditiven učinek alelov")) %>%
+  summarise(Povprecna_generacija_fiksacije = mean(Prva_generacija_fiksacije))
+
+min_gen_fiksirane
+povprecne_gen_fiksirane
+```
+
+**3. vprašanje:**\
+Alel je letalen, kadar povzroči smrt osebka s tem alelom. Privzemimo, da do smrti pride pred spolno zrelostjo. Torej osebek z letalnim alelom nima potomcev in je njegov fitnes enak nič. Letalni aleli se lahko izražajo dominantno ali recesivno.
+
+\
+Grafični prikaz selekcije:
+
+```{r}
+letalni_recesivni <- c(0, 1, 1)
+letalni_dominantni <- c(0, 0, 1)
+fitnes_letalni <- list(letalni_recesivni, letalni_dominantni)
+
+skupen_matriks_letalni <- lapply(fitnes_letalni, function(fitnes) { 
+  generiraj_matriks_frekvenc(0.5, 10, 100, 8*10^9, fitnes)
+})
+
+
+skupna_tabela_letalni <- data.frame()
+
+for (i in 1:length(skupen_matriks_letalni)) {
+  matriks <- skupen_matriks_letalni[[i]] 
+  
+  dataframe <- as.data.frame(melt(matriks)) 
+  names(dataframe) <- c("Populacija", "Generacija", "Frekvenca_alela") 
+  dataframe$Populacija <- as.numeric(as.character(dataframe$Populacija))
+  dataframe$Generacija <- as.numeric(as.character(dataframe$Generacija))
+  dataframe$Selekcija <- rep(i, times = nrow(dataframe)) 
+  
+  skupna_tabela_letalni <- rbind(skupna_tabela_letalni, dataframe)
+}
+
+```
+
+```{r}
+ggplot(data = skupna_tabela_letalni, aes(x = Generacija, y = Frekvenca_alela, color = factor(Selekcija))) +
+  geom_line() +
+  scale_color_manual(values = c("red", "blue"), labels = c("letalni recesivni alel", "letalni dominantni alel")) +
+  scale_x_continuous(expand = c(0.01, 0.01), breaks = seq(0, max(skupna_tabela_letalni$Generacija), by = max(skupna_tabela_letalni$Generacija)/10)) +
+  scale_y_continuous(expand = c(0.02, 0.02), breaks = seq(0, 1, by = 0.1)) +
+  labs(x = "Generacije", y = "Frekvenca alela", color = "Selekcija") +
+  facet_wrap(~ Selekcija) + 
+  theme_minimal() +
+  theme(axis.line.x = element_line(linewidth = 0.5),
+        axis.line.y = element_line(linewidth = 0.5))
+```
+
+Pri selekciji z letalnim dominantnim alelom A opazimo izgubo tega alela takoj v 1 generaciji. Vsi osebki z AA ali Aa genotipom svojih genov ne prenesejo na potomce, ostane le aa genotip.\
+Pri selekciji z recesivnim letalnim alelom pa vidimo, da se frekvenca recesivnega alela a približuje 0, a je nikoli ne doseže, saj so recesivni letalni aleli skriti v heterozigotih, ki pa svoje alele lahko prenesejo na potomce.\
+Torej se v človeški populaciji letalne bolezni prenašajo z recesivnimi aleli, v nasprotnem primeru pa se takoj eliminirajo iz populacije.
